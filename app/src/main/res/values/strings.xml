@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Hexaro Office</string>
+    <string name="open_document">Open Document</string>
+    <string name="recent_documents">Recent Documents</string>
+    <string name="no_recent_files">No recent documents yet.\nTap "Open Document" to browse and edit files.</string>
+    <string name="clear_recents">Clear History</string>
+    <string name="file_not_found">File could not be opened</string>
+</resources>
