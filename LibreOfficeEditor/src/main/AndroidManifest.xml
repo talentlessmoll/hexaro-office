@@ -7,6 +7,7 @@
         <activity
             android:name="org.libreoffice.androidlib.LOActivity"
             android:launchMode="singleTask"
+            android:taskAffinity="com.hexaro.office"
             android:configChanges="screenSize|screenLayout|orientation|keyboardHidden">
         </activity>
 

@@ -692,6 +692,21 @@
    window.postMobileMessage = function(msg) { window.COOLMessageHandler.postMobileMessage(msg); };
    window.postMobileError   = function(msg) { window.COOLMessageHandler.postMobileError(msg); };
    window.postMobileDebug   = function(msg) { window.COOLMessageHandler.postMobileDebug(msg); };
+   window.copyToClipboard   = function(text) { if (window.COOLMessageHandler && window.COOLMessageHandler.copyToClipboard) { window.COOLMessageHandler.copyToClipboard(text); } };
+   window.getClipboardText  = function() { return (window.COOLMessageHandler && window.COOLMessageHandler.getClipboardText) ? window.COOLMessageHandler.getClipboardText() : ''; };
+
+   document.addEventListener('copy', function(e) {
+       var text = "";
+       if (window.getSelection) {
+           text = window.getSelection().toString();
+       }
+       if (!text && e.clipboardData) {
+           text = e.clipboardData.getData('text/plain');
+       }
+       if (text && window.COOLMessageHandler && window.COOLMessageHandler.copyToClipboard) {
+           window.COOLMessageHandler.copyToClipboard(text);
+       }
+   });
 
 if (window.ThisIsTheiOSApp) {
   window.addEventListener('keydown', function(e) {

@@ -16,6 +16,8 @@
         <activity
             android:name=".FileListActivity"
             android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.hexaro.office"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

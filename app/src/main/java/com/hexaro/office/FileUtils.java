@@ -50,6 +50,13 @@ public class FileUtils {
 
     public static String copyUriToInternalStorage(Context context, Uri uri) {
         try {
+            if ("file".equalsIgnoreCase(uri.getScheme()) && uri.getPath() != null) {
+                File directFile = new File(uri.getPath());
+                if (directFile.exists() && directFile.canRead()) {
+                    return directFile.getAbsolutePath();
+                }
+            }
+
             ContentResolver resolver = context.getContentResolver();
             String fileName = getFileName(context, uri);
             
@@ -62,7 +69,7 @@ public class FileUtils {
             try (InputStream in = resolver.openInputStream(uri);
                  OutputStream out = new FileOutputStream(destFile)) {
                 if (in == null) return null;
-                byte[] buffer = new byte[8192];
+                byte[] buffer = new byte[65536];
                 int read;
                 while ((read = in.read(buffer)) != -1) {
                     out.write(buffer, 0, read);

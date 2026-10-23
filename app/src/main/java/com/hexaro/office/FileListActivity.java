@@ -258,24 +258,46 @@ public class FileListActivity extends AppCompatActivity {
         if (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_EDIT.equals(action)) {
             Uri uri = intent.getData();
             if (uri != null) {
+                // Clear the intent action so subsequent resumes or task switches never re-open
+                setIntent(new Intent(this, FileListActivity.class).setAction(Intent.ACTION_MAIN));
                 handleIncomingUri(uri);
             }
         } else if (Intent.ACTION_SEND.equals(action)) {
             Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
             if (uri != null) {
+                setIntent(new Intent(this, FileListActivity.class).setAction(Intent.ACTION_MAIN));
                 handleIncomingUri(uri);
             }
         }
     }
 
     private void handleIncomingUri(Uri uri) {
-        String fileName = FileUtils.getFileName(this, uri);
-        String localPath = FileUtils.copyUriToInternalStorage(this, uri);
-        if (localPath != null) {
-            openEditor(localPath, fileName);
-        } else {
-            Toast.makeText(this, R.string.file_not_found, Toast.LENGTH_SHORT).show();
+        // Fast direct path if it's already a local file scheme
+        if ("file".equalsIgnoreCase(uri.getScheme()) && uri.getPath() != null && new File(uri.getPath()).exists()) {
+            openEditor(uri.getPath(), new File(uri.getPath()).getName());
+            return;
         }
+
+        AlertDialog loadingDialog = new MaterialAlertDialogBuilder(this)
+                .setTitle("Opening Document")
+                .setMessage("Loading file...")
+                .setCancelable(false)
+                .show();
+
+        java.util.concurrent.Executors.newSingleThreadExecutor().execute(() -> {
+            String fileName = FileUtils.getFileName(this, uri);
+            String localPath = FileUtils.copyUriToInternalStorage(this, uri);
+            runOnUiThread(() -> {
+                if (!isFinishing() && !isDestroyed()) {
+                    loadingDialog.dismiss();
+                }
+                if (localPath != null) {
+                    openEditor(localPath, fileName);
+                } else {
+                    Toast.makeText(this, R.string.file_not_found, Toast.LENGTH_SHORT).show();
+                }
+            });
+        });
     }
 
     private void openEditor(String filePath, String fileName) {

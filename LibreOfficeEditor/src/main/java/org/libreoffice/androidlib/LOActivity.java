@@ -8,6 +8,8 @@
 package org.libreoffice.androidlib;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -25,6 +27,7 @@ import android.webkit.JavascriptInterface;
 import android.webkit.WebSettings;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -52,6 +55,8 @@ public class LOActivity extends Activity {
 
     private boolean mMobileWizardVisible = false;
     private boolean mIsEditModeActive = false;
+    private boolean isByeSent = false;
+    private boolean isSlideShowActive = false;
 
 
     private static boolean copyFromAssets(AssetManager assetManager, String fromAssetPath, String targetDir) {
@@ -168,6 +173,11 @@ public class LOActivity extends Activity {
         mWebView = findViewById(R.id.browser);
         WebSettings webSettings = mWebView.getSettings();
         webSettings.setJavaScriptEnabled(true);
+        webSettings.setDomStorageEnabled(true);
+        webSettings.setDatabaseEnabled(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowContentAccess(true);
+        webSettings.setCacheMode(WebSettings.LOAD_DEFAULT);
         mWebView.addJavascriptInterface(this, "COOLMessageHandler");
 
         getMainHandler();
@@ -182,27 +192,33 @@ public class LOActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (!documentLoaded) {
+        if (!documentLoaded && isByeSent) {
             super.onDestroy();
             return;
         }
 
         // Remove the webview from the hierarchy & destroy
-        final ViewGroup viewGroup = (ViewGroup) mWebView.getParent();
-        if (viewGroup != null) {
-            viewGroup.removeView(mWebView);
+        if (mWebView != null) {
+            final ViewGroup viewGroup = (ViewGroup) mWebView.getParent();
+            if (viewGroup != null) {
+                viewGroup.removeView(mWebView);
+            }
+            mWebView.destroy();
+            mWebView = null;
         }
-        mWebView.destroy();
-        mWebView = null;
 
-        // Most probably the native part has already got a 'BYE' from
-        // finishWithProgress(), but it is actually better to send it twice
-        // than never, so let's call it from here too anyway
         documentLoaded = false;
-        postMobileMessageNative("BYE");
+        if (!isByeSent) {
+            isByeSent = true;
+            try {
+                postMobileMessageNative("BYE");
+            } catch (Exception ignored) {}
+        }
 
         if (mProgressDialog != null) {
-            mProgressDialog.dismiss();
+            try {
+                mProgressDialog.dismiss();
+            } catch (Exception ignored) {}
         }
 
         super.onDestroy();
@@ -213,50 +229,82 @@ public class LOActivity extends Activity {
      * Show the Saving progress and finish the app.
      */
     private void finishWithProgress() {
+        if (!documentLoaded || isByeSent) {
+            finishAndRemoveTask();
+            return;
+        }
+        isByeSent = true;
+        documentLoaded = false;
+        if (mProgressDialog != null) {
+            try {
+                mProgressDialog.indeterminate(R.string.office_file_exiting);
+            } catch (Exception ignored) {}
+        }
+
+        new Thread(() -> {
+            try {
+                postMobileMessageNative("BYE");
+            } catch (Exception e) {
+                Log.e(TAG, "Error posting native BYE", e);
+            }
+            runOnUiThread(() -> {
+                if (mProgressDialog != null) {
+                    try {
+                        mProgressDialog.dismiss();
+                    } catch (Exception ignored) {}
+                }
+                finishAndRemoveTask();
+            });
+        }).start();
+    }
+
+    private void enterSlideShowMode() {
+        isSlideShowActive = true;
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN
+        );
+        callFakeWebsocketOnMessage("'presentation'");
+        callFakeWebsocketOnMessage("'fullscreen'");
+        Toast.makeText(this, "Slideshow started. Tap or swipe to advance, back to exit.", Toast.LENGTH_SHORT).show();
+    }
+
+    private void exitSlideShowMode() {
+        isSlideShowActive = false;
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        View decorView = getWindow().getDecorView();
+        decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+        callFakeWebsocketOnMessage("'presentationstop'");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (isSlideShowActive) {
+            exitSlideShowMode();
+            return;
+        }
+
         if (!documentLoaded) {
             finishAndRemoveTask();
             return;
         }
-        mProgressDialog.indeterminate(R.string.office_file_exiting);
 
-        // The 'BYE' takes a considerable amount of time, we need to post it
-        // so that it starts after the saving progress is actually shown
-        getMainHandler().post(new Runnable() {
-            @Override
-            public void run() {
-                documentLoaded = false;
-                postMobileMessageNative("BYE");
-                // copyTempBackToIntent();
+        if (mMobileWizardVisible) {
+            callFakeWebsocketOnMessage("'mobile: mobilewizardback'");
+            return;
+        } else if (mIsEditModeActive) {
+            callFakeWebsocketOnMessage("'mobile: readonlymode'");
+            return;
+        }
 
-                runOnUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        mProgressDialog.dismiss();
-                    }
-                });
-                finishAndRemoveTask();
-            }
-        });
+        finishWithProgress();
     }
-
-     @Override
-     public void onBackPressed() {
-         if (!documentLoaded) {
-             finishAndRemoveTask();
-             return;
-         }
-
-         if (mMobileWizardVisible) {
-             // just return one level up in the mobile-wizard (or close it)
-             callFakeWebsocketOnMessage("'mobile: mobilewizardback'");
-             return;
-         } else if (mIsEditModeActive) {
-             callFakeWebsocketOnMessage("'mobile: readonlymode'");
-             return;
-         }
-
-         finishWithProgress();
-     }
 
     private void loadDocument() {
         mProgressDialog.determinate(R.string.office_file_loading);
@@ -358,6 +406,45 @@ public class LOActivity extends Activity {
         return isChromeOS(this);
     }
 
+    @JavascriptInterface
+    public void copyToClipboard(String text) {
+        if (text == null || text.isEmpty()) return;
+        getMainHandler().post(() -> {
+            try {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                if (clipboard != null) {
+                    ClipData clip = ClipData.newPlainText("Hexaro Office", text);
+                    clipboard.setPrimaryClip(clip);
+                    Toast.makeText(LOActivity.this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to copy to clipboard", e);
+            }
+        });
+    }
+
+    @JavascriptInterface
+    public String getClipboardText() {
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null && clipboard.hasPrimaryClip() && clipboard.getPrimaryClip().getItemCount() > 0) {
+                CharSequence text = clipboard.getPrimaryClip().getItemAt(0).getText();
+                return text != null ? text.toString() : "";
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to get clipboard text", e);
+        }
+        return "";
+    }
+
+    private void populateClipboard() {
+        try {
+            postMobileMessageNative("gettextselection");
+        } catch (Exception e) {
+            Log.e(TAG, "Error requesting text selection", e);
+        }
+    }
+
     /**
      * Passing message the other way around - from Java to the FakeWebSocket in JS.
      */
@@ -373,6 +460,29 @@ public class LOActivity extends Activity {
                     mWebView.loadUrl("javascript:window.TheFakeWebSocket.onmessage({'data':" + message + "});");
                 }
             });
+
+        // Intercept text selection content and copy to Android clipboard
+        if (message.startsWith("'textselectioncontent: ")) {
+            runOnUiThread(() -> {
+                try {
+                    String raw = message.substring("'textselectioncontent: ".length());
+                    if (raw.endsWith("'")) {
+                        raw = raw.substring(0, raw.length() - 1);
+                    }
+                    String plainText = android.text.Html.fromHtml(raw, android.text.Html.FROM_HTML_MODE_LEGACY).toString().trim();
+                    if (!plainText.isEmpty()) {
+                        ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                        if (clipboard != null) {
+                            ClipData clip = ClipData.newPlainText("Hexaro Office", plainText);
+                            clipboard.setPrimaryClip(clip);
+                            Toast.makeText(LOActivity.this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error copying text selection", e);
+                }
+            });
+        }
 
         // update progress bar when loading
         if (message.startsWith("'statusindicator") || message.startsWith("'error:")) {
@@ -408,6 +518,10 @@ public class LOActivity extends Activity {
             case "BYE":
                 finishWithProgress();
                 return false;
+            case "SLIDESHOW": {
+                getMainHandler().post(this::enterSlideShowMode);
+                return false;
+            }
             case "LIGHT_SCREEN": {
                 getMainHandler().post(new Runnable() {
                     @Override
@@ -458,7 +572,7 @@ public class LOActivity extends Activity {
                 switch (messageAndParameterArray[1]) {
                     case ".uno:Copy":
                     case ".uno:Cut":
-                        // populateClipboard();
+                        populateClipboard();
                         break;
                     default:
                         break;

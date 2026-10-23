@@ -18,18 +18,32 @@ public class COWebView extends WebView {
     public COWebView(Context context) {
         super(context);
         mContext = context;
+        init();
     }
 
     public COWebView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        mContext = context;
+        init();
     }
 
     public COWebView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        mContext = context;
+        init();
     }
 
     public COWebView(Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+        mContext = context;
+        init();
+    }
+
+    private void init() {
+        setFocusable(true);
+        setFocusableInTouchMode(true);
+        setLongClickable(true);
+        setHapticFeedbackEnabled(true);
     }
 
     /*
