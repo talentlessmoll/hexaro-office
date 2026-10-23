@@ -1,0 +1,101 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Verify & Fetch Native Libraries (LFS Fallback)
+        run: |
+          cd LibreOfficeEditor/libs/arm64-v8a
+          for file in *.so; do
+            FILESIZE=$(stat -c%s "$file" 2>/dev/null || echo 0)
+            if [ "$FILESIZE" -lt 1000 ]; then
+              echo "LFS pointer detected for $file ($FILESIZE bytes). Fetching binary from upstream..."
+              curl -sL --retry 3 "https://media.githubusercontent.com/media/marzaha/LibreOfficeEditor/master/LibreOfficeEditor/libs/arm64-v8a/$file" -o "$file"
+            fi
+            echo "$file ready (size: $(stat -c%s "$file"))"
+          done
+
+      - name: Build Android APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --stacktrace
+
+      - name: Send APK to Telegram
+        if: success()
+        run: |
+          BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN || '8711109574:AAHC5A-vZWt053OhUCYcXELDgD1u4UUsflQ' }}"
+          CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID || '-1003938750309' }}"
+
+          APK_PATH=""
+          BUILD_TYPE="Release"
+          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
+            APK_PATH="app/build/outputs/apk/release/app-release.apk"
+          else
+            APK_PATH=$(find app/build/outputs/apk -name "*.apk" 2>/dev/null | head -n 1)
+          fi
+
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "Error: No APK file found in build outputs!"
+            exit 1
+          fi
+
+          FILE_SIZE=$(du -h "$APK_PATH" | cut -f1)
+          SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "${GITHUB_SHA:0:7}")
+          COMMIT_MSG=$(git log -1 --pretty=%B 2>/dev/null | head -n 1 | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || echo "No commit message")
+          AUTHOR=$(git log -1 --pretty=%an 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || echo "${GITHUB_ACTOR}")
+          BRANCH_NAME="${GITHUB_REF_NAME}"
+          REPO_NAME="${GITHUB_REPOSITORY}"
+          BUILD_DATE=$(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          NEW_APK_NAME="HexaroOffice-v1.0.0-release-${SHORT_SHA}.apk"
+          cp "$APK_PATH" "./${NEW_APK_NAME}"
+
+          CAPTION="📱 <b>Hexaro Office APK Build Complete</b>\n\n"
+          CAPTION="${CAPTION}• <b>App Name:</b> Hexaro Office\n"
+          CAPTION="${CAPTION}• <b>Version:</b> 1.0.0 (1)\n"
+          CAPTION="${CAPTION}• <b>Build Type:</b> ${BUILD_TYPE}\n"
+          CAPTION="${CAPTION}• <b>File Size:</b> ${FILE_SIZE}\n"
+          CAPTION="${CAPTION}• <b>Branch:</b> <code>${BRANCH_NAME}</code>\n"
+          CAPTION="${CAPTION}• <b>Repository:</b> <code>${REPO_NAME}</code>\n"
+          CAPTION="${CAPTION}• <b>Commit:</b> <code>${SHORT_SHA}</code>\n"
+          CAPTION="${CAPTION}• <b>Author:</b> ${AUTHOR}\n"
+          CAPTION="${CAPTION}• <b>Message:</b> ${COMMIT_MSG}\n"
+          CAPTION="${CAPTION}• <b>Build Time:</b> ${BUILD_DATE}"
+
+          echo "Sending ${NEW_APK_NAME} (${FILE_SIZE}) to Telegram channel ${CHAT_ID}..."
+          CAPTION_TEXT=$(printf "$CAPTION")
+
+          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+            -F "chat_id=${CHAT_ID}" \
+            -F "document=@${NEW_APK_NAME}" \
+            -F "caption=${CAPTION_TEXT}" \
+            -F "parse_mode=HTML")
+
+          echo "Telegram API Response: ${RESPONSE}"
+
+          if echo "$RESPONSE" | grep -q '"ok":true'; then
+            echo "Successfully delivered APK to Telegram channel!"
+          else
+            echo "Failed to send APK to Telegram channel."
+            exit 1
+          fi
