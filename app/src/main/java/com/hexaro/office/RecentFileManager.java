@@ -13,7 +13,7 @@ import java.util.List;
 public class RecentFileManager {
     private static final String PREF_NAME = "hexaro_recents_pref";
     private static final String KEY_RECENTS = "recent_documents_list";
-    private static final int MAX_RECENTS = 25;
+    private static final int MAX_RECENTS = 50;
 
     public static class Item {
         public String name;
@@ -49,7 +49,6 @@ public class RecentFileManager {
         if (path == null) return;
         List<Item> current = getRecents(context);
         
-        // Remove duplicate if already present
         for (int i = 0; i < current.size(); i++) {
             if (current.get(i).path.equals(path)) {
                 current.remove(i);
@@ -57,14 +56,24 @@ public class RecentFileManager {
             }
         }
 
-        // Add to top
         current.add(0, new Item(name, path, System.currentTimeMillis()));
 
-        // Trim
         while (current.size() > MAX_RECENTS) {
             current.remove(current.size() - 1);
         }
 
+        saveRecents(context, current);
+    }
+
+    public static void removeRecent(Context context, String path) {
+        if (path == null) return;
+        List<Item> current = getRecents(context);
+        for (int i = 0; i < current.size(); i++) {
+            if (current.get(i).path.equals(path)) {
+                current.remove(i);
+                break;
+            }
+        }
         saveRecents(context, current);
     }
 

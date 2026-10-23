@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public class RecentAdapter extends RecyclerView.Adapter<RecentAdapter.ViewHolder> {
 
@@ -22,19 +23,74 @@ public class RecentAdapter extends RecyclerView.Adapter<RecentAdapter.ViewHolder
         void onItemClick(RecentFileManager.Item item);
     }
 
-    private final List<RecentFileManager.Item> items = new ArrayList<>();
-    private final OnItemClickListener listener;
+    public interface OnItemLongClickListener {
+        void onItemLongClick(RecentFileManager.Item item, View anchor);
+    }
 
-    public RecentAdapter(OnItemClickListener listener) {
-        this.listener = listener;
+    private final List<RecentFileManager.Item> originalItems = new ArrayList<>();
+    private final List<RecentFileManager.Item> displayedItems = new ArrayList<>();
+    private final OnItemClickListener clickListener;
+    private final OnItemLongClickListener longClickListener;
+
+    private String currentCategory = "ALL";
+    private String currentQuery = "";
+
+    public RecentAdapter(OnItemClickListener clickListener, OnItemLongClickListener longClickListener) {
+        this.clickListener = clickListener;
+        this.longClickListener = longClickListener;
     }
 
     public void setData(List<RecentFileManager.Item> newItems) {
-        items.clear();
+        originalItems.clear();
         if (newItems != null) {
-            items.addAll(newItems);
+            originalItems.addAll(newItems);
+        }
+        applyFilter();
+    }
+
+    public void setFilter(String category, String query) {
+        this.currentCategory = category != null ? category.toUpperCase(Locale.ROOT) : "ALL";
+        this.currentQuery = query != null ? query.trim().toLowerCase(Locale.ROOT) : "";
+        applyFilter();
+    }
+
+    private void applyFilter() {
+        displayedItems.clear();
+        for (RecentFileManager.Item item : originalItems) {
+            if (!matchesQuery(item.name, currentQuery)) {
+                continue;
+            }
+            if (matchesCategory(item.name, currentCategory)) {
+                displayedItems.add(item);
+            }
         }
         notifyDataSetChanged();
+    }
+
+    private boolean matchesQuery(String name, String q) {
+        return q.isEmpty() || name.toLowerCase(Locale.ROOT).contains(q);
+    }
+
+    private boolean matchesCategory(String name, String cat) {
+        if ("ALL".equals(cat)) return true;
+        String ext = getExtension(name);
+        switch (cat) {
+            case "WORD":
+                return ext.equals("doc") || ext.equals("docx") || ext.equals("odt") || ext.equals("rtf");
+            case "EXCEL":
+                return ext.equals("xls") || ext.equals("xlsx") || ext.equals("ods") || ext.equals("csv");
+            case "PPT":
+                return ext.equals("ppt") || ext.equals("pptx") || ext.equals("odp");
+            case "PDF":
+                return ext.equals("pdf");
+            default:
+                return true;
+        }
+    }
+
+    private static String getExtension(String name) {
+        int dot = name.lastIndexOf('.');
+        return dot != -1 ? name.substring(dot + 1).toLowerCase(Locale.ROOT) : "";
     }
 
     @NonNull
@@ -46,13 +102,13 @@ public class RecentAdapter extends RecyclerView.Adapter<RecentAdapter.ViewHolder
 
     @Override
     public void onBindViewHolder(@NonNull ViewHolder holder, int position) {
-        RecentFileManager.Item item = items.get(position);
-        holder.bind(item, listener);
+        RecentFileManager.Item item = displayedItems.get(position);
+        holder.bind(item, clickListener, longClickListener);
     }
 
     @Override
     public int getItemCount() {
-        return items.size();
+        return displayedItems.size();
     }
 
     static class ViewHolder extends RecyclerView.ViewHolder {
@@ -67,39 +123,34 @@ public class RecentAdapter extends RecyclerView.Adapter<RecentAdapter.ViewHolder
             tvFileInfo = itemView.findViewById(R.id.tv_file_info);
         }
 
-        public void bind(RecentFileManager.Item item, OnItemClickListener listener) {
+        public void bind(RecentFileManager.Item item, OnItemClickListener click, OnItemLongClickListener longClick) {
             tvFileName.setText(item.name);
             
-            String ext = "";
-            int dot = item.name.lastIndexOf('.');
-            if (dot != -1) {
-                ext = item.name.substring(dot + 1).toLowerCase();
-            }
-
+            String ext = getExtension(item.name);
             String badgeText = "FILE";
             int badgeColor = Color.parseColor("#607D8B");
 
             if (ext.equals("doc") || ext.equals("docx") || ext.equals("odt") || ext.equals("rtf")) {
                 badgeText = "DOC";
-                badgeColor = Color.parseColor("#2B579A");
+                badgeColor = Color.parseColor("#1A73E8");
             } else if (ext.equals("xls") || ext.equals("xlsx") || ext.equals("ods") || ext.equals("csv")) {
                 badgeText = "XLS";
-                badgeColor = Color.parseColor("#217346");
+                badgeColor = Color.parseColor("#1E8E3E");
             } else if (ext.equals("ppt") || ext.equals("pptx") || ext.equals("odp")) {
                 badgeText = "PPT";
-                badgeColor = Color.parseColor("#D24726");
+                badgeColor = Color.parseColor("#E8710A");
             } else if (ext.equals("pdf")) {
                 badgeText = "PDF";
-                badgeColor = Color.parseColor("#D32F2F");
+                badgeColor = Color.parseColor("#D93025");
             } else if (ext.equals("txt")) {
                 badgeText = "TXT";
-                badgeColor = Color.parseColor("#546E7A");
+                badgeColor = Color.parseColor("#5F6368");
             }
 
             tvBadge.setText(badgeText);
             GradientDrawable shape = new GradientDrawable();
             shape.setShape(GradientDrawable.RECTANGLE);
-            shape.setCornerRadius(14f);
+            shape.setCornerRadius(16f);
             shape.setColor(badgeColor);
             tvBadge.setBackground(shape);
 
@@ -114,7 +165,15 @@ public class RecentAdapter extends RecyclerView.Adapter<RecentAdapter.ViewHolder
             }
 
             itemView.setOnClickListener(v -> {
-                if (listener != null) listener.onItemClick(item);
+                if (click != null) click.onItemClick(item);
+            });
+
+            itemView.setOnLongClickListener(v -> {
+                if (longClick != null) {
+                    longClick.onItemLongClick(item, itemView);
+                    return true;
+                }
+                return false;
             });
         }
     }

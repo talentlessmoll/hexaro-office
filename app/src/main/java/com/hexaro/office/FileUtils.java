@@ -2,15 +2,22 @@ package com.hexaro.office;
 
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.res.AssetManager;
 import android.database.Cursor;
 import android.net.Uri;
 import android.provider.OpenableColumns;
 import android.util.Log;
 
+import androidx.core.content.FileProvider;
+
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 public class FileUtils {
     private static final String TAG = "HexaroFileUtils";
@@ -52,7 +59,6 @@ public class FileUtils {
             }
 
             File destFile = new File(cacheFolder, fileName);
-            // If file already exists with same name and non-zero size, we can overwrite or reuse
             try (InputStream in = resolver.openInputStream(uri);
                  OutputStream out = new FileOutputStream(destFile)) {
                 if (in == null) return null;
@@ -67,6 +73,80 @@ public class FileUtils {
         } catch (Exception e) {
             Log.e(TAG, "Failed to copy URI to internal storage", e);
             return null;
+        }
+    }
+
+    public static String createNewDocument(Context context, String format) {
+        try {
+            String assetName;
+            String prefix;
+            String ext;
+
+            switch (format.toLowerCase()) {
+                case "sheet":
+                case "xlsx":
+                case "ods":
+                    assetName = "templates/untitled.ods";
+                    prefix = "Spreadsheet";
+                    ext = ".ods";
+                    break;
+                case "presentation":
+                case "pptx":
+                case "odp":
+                    assetName = "templates/untitled.odp";
+                    prefix = "Presentation";
+                    ext = ".odp";
+                    break;
+                case "doc":
+                case "docx":
+                case "odt":
+                default:
+                    assetName = "templates/untitled.odt";
+                    prefix = "Document";
+                    ext = ".odt";
+                    break;
+            }
+
+            File folder = new File(context.getFilesDir(), "my_documents");
+            if (!folder.exists()) {
+                folder.mkdirs();
+            }
+
+            String dateSuffix = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
+            String newFileName = prefix + "_" + dateSuffix + ext;
+            File dest = new File(folder, newFileName);
+
+            AssetManager am = context.getAssets();
+            try (InputStream in = am.open(assetName);
+                 OutputStream out = new FileOutputStream(dest)) {
+                byte[] buf = new byte[4096];
+                int r;
+                while ((r = in.read(buf)) != -1) {
+                    out.write(buf, 0, r);
+                }
+                out.flush();
+            }
+
+            return dest.getAbsolutePath();
+        } catch (Exception e) {
+            Log.e(TAG, "Error creating new document template", e);
+            return null;
+        }
+    }
+
+    public static void shareDocument(Context context, String filePath) {
+        try {
+            File file = new File(filePath);
+            if (!file.exists()) return;
+
+            Uri uri = FileProvider.getUriForFile(context, context.getPackageName() + ".provider", file);
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_STREAM, uri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            context.startActivity(Intent.createChooser(intent, "Share " + file.getName()));
+        } catch (Exception e) {
+            Log.e(TAG, "Error sharing file", e);
         }
     }
 }

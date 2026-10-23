@@ -30,7 +30,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Document.docx"
-            android:textColor="#1F1F1F"
+            android:textColor="@color/text_primary"
             android:textSize="16sp"
             android:textStyle="bold"
             android:maxLines="1"
@@ -42,7 +42,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
             android:text="1.2 MB • Just now"
-            android:textColor="#757575"
+            android:textColor="@color/text_secondary"
             android:textSize="12sp"
             android:maxLines="1"
             android:ellipsize="middle" />
