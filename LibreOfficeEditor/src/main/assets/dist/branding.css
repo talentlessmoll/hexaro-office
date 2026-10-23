@@ -1807,3 +1807,25 @@ body {
 #document-container {
   border-color: #e6e6e6 !important;
 }
+
+
+/* Completely remove and hide all slideshow presentation buttons */
+#tb_actionbar_item_fullscreen-presentation,
+#tb_editbar_item_fullscreen-presentation,
+#tb_actionbar_item_presentation,
+#tb_editbar_item_presentation,
+#tb_actionbar_item_presentation-currentslide,
+#tb_editbar_item_presentation-currentslide,
+[id*="fullscreen-presentation"],
+[id*="presentation-currentslide"],
+.w2ui-icon.presentation,
+.w2ui-icon.fullscreen-presentation {
+    display: none !important;
+}
+
+/* Ensure touch selection handles are always rendered and clickable */
+.leaflet-selection-marker-start,
+.leaflet-selection-marker-end {
+    display: block !important;
+    pointer-events: auto !important;
+}

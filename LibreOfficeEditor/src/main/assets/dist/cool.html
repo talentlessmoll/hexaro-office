@@ -708,6 +708,54 @@
        }
    });
 
+   // PPTX Continuous Vertical Scroll & Text Selection
+   (function() {
+       var touchStartY = 0;
+       var touchStartX = 0;
+       var touchStartTime = 0;
+
+       document.addEventListener('touchstart', function(e) {
+           if (e.touches && e.touches.length === 1) {
+               touchStartY = e.touches[0].clientY;
+               touchStartX = e.touches[0].clientX;
+               touchStartTime = Date.now();
+           }
+       }, { passive: true });
+
+       document.addEventListener('touchend', function(e) {
+           if (!e.changedTouches || e.changedTouches.length !== 1) return;
+           var deltaY = e.changedTouches[0].clientY - touchStartY;
+           var deltaX = e.changedTouches[0].clientX - touchStartX;
+           var deltaTime = Date.now() - touchStartTime;
+
+           var map = window.app && window.app.map ? window.app.map : (window.L && window.L.Map && window.L.Map.THIS ? window.L.Map.THIS : null);
+           if (!map || !map.getDocType || map.getDocType() !== 'presentation') return;
+
+           // Continuous vertical scroll across presentation slides
+           if (Math.abs(deltaY) > 75 && Math.abs(deltaY) > Math.abs(deltaX) * 1.4 && deltaTime < 500) {
+               var currentPart = map.getCurrentPartNumber ? map.getCurrentPartNumber() : (map._docLayer ? map._docLayer._selectedPart : 0);
+               var totalParts = map.getNumberOfParts ? map.getNumberOfParts() : (map._docLayer ? map._docLayer._parts : 0);
+               if (deltaY < 0 && currentPart + 1 < totalParts) {
+                   map.setPart(currentPart + 1);
+               } else if (deltaY > 0 && currentPart > 0) {
+                   map.setPart(currentPart - 1);
+               }
+           }
+       }, { passive: true });
+
+       var lastTapTime = 0;
+       document.addEventListener('touchend', function(e) {
+           var now = Date.now();
+           if (now - lastTapTime < 350) {
+               var map = window.app && window.app.map ? window.app.map : (window.L && window.L.Map && window.L.Map.THIS ? window.L.Map.THIS : null);
+               if (map && map.sendUnoCommand) {
+                   map.sendUnoCommand(".uno:SelectWord");
+               }
+           }
+           lastTapTime = now;
+       }, { passive: true });
+   })();
+
 if (window.ThisIsTheiOSApp) {
   window.addEventListener('keydown', function(e) {
     if (e.metaKey) {

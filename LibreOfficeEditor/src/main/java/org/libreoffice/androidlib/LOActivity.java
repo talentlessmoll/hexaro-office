@@ -56,7 +56,6 @@ public class LOActivity extends Activity {
     private boolean mMobileWizardVisible = false;
     private boolean mIsEditModeActive = false;
     private boolean isByeSent = false;
-    private boolean isSlideShowActive = false;
 
 
     private static boolean copyFromAssets(AssetManager assetManager, String fromAssetPath, String targetDir) {
@@ -230,7 +229,7 @@ public class LOActivity extends Activity {
      */
     private void finishWithProgress() {
         if (!documentLoaded || isByeSent) {
-            finishAndRemoveTask();
+            finish();
             return;
         }
         isByeSent = true;
@@ -241,57 +240,28 @@ public class LOActivity extends Activity {
             } catch (Exception ignored) {}
         }
 
-        new Thread(() -> {
-            try {
-                postMobileMessageNative("BYE");
-            } catch (Exception e) {
-                Log.e(TAG, "Error posting native BYE", e);
-            }
-            runOnUiThread(() -> {
+        getMainHandler().post(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    postMobileMessageNative("BYE");
+                } catch (Exception e) {
+                    Log.e(TAG, "Error posting native BYE", e);
+                }
                 if (mProgressDialog != null) {
                     try {
                         mProgressDialog.dismiss();
                     } catch (Exception ignored) {}
                 }
-                finishAndRemoveTask();
-            });
-        }).start();
-    }
-
-    private void enterSlideShowMode() {
-        isSlideShowActive = true;
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-        );
-        callFakeWebsocketOnMessage("'presentation'");
-        callFakeWebsocketOnMessage("'fullscreen'");
-        Toast.makeText(this, "Slideshow started. Tap or swipe to advance, back to exit.", Toast.LENGTH_SHORT).show();
-    }
-
-    private void exitSlideShowMode() {
-        isSlideShowActive = false;
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        View decorView = getWindow().getDecorView();
-        decorView.setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
-        callFakeWebsocketOnMessage("'presentationstop'");
+                finish();
+            }
+        });
     }
 
     @Override
     public void onBackPressed() {
-        if (isSlideShowActive) {
-            exitSlideShowMode();
-            return;
-        }
-
         if (!documentLoaded) {
-            finishAndRemoveTask();
+            finish();
             return;
         }
 
@@ -439,7 +409,7 @@ public class LOActivity extends Activity {
 
     private void populateClipboard() {
         try {
-            postMobileMessageNative("gettextselection");
+            postMobileMessageNative("gettextselection mimetype=text/plain;charset=utf-8");
         } catch (Exception e) {
             Log.e(TAG, "Error requesting text selection", e);
         }
@@ -519,7 +489,6 @@ public class LOActivity extends Activity {
                 finishWithProgress();
                 return false;
             case "SLIDESHOW": {
-                getMainHandler().post(this::enterSlideShowMode);
                 return false;
             }
             case "LIGHT_SCREEN": {

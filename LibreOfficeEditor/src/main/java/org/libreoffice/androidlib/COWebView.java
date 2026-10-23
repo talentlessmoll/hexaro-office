@@ -42,7 +42,6 @@ public class COWebView extends WebView {
     private void init() {
         setFocusable(true);
         setFocusableInTouchMode(true);
-        setLongClickable(true);
         setHapticFeedbackEnabled(true);
     }
 
