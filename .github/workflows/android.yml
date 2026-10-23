@@ -7,6 +7,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -40,6 +43,8 @@ jobs:
 
       - name: Send APK to Telegram
         if: success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           BOT_TOKEN="${{ secrets.TELEGRAM_BOT_TOKEN || '8711109574:AAHC5A-vZWt053OhUCYcXELDgD1u4UUsflQ' }}"
           CHAT_ID="${{ secrets.TELEGRAM_CHAT_ID || '-1003938750309' }}"
@@ -58,6 +63,7 @@ jobs:
           fi
 
           FILE_SIZE=$(du -h "$APK_PATH" | cut -f1)
+          SIZE_BYTES=$(stat -c%s "$APK_PATH")
           SHORT_SHA=$(git rev-parse --short HEAD 2>/dev/null || echo "${GITHUB_SHA:0:7}")
           COMMIT_MSG=$(git log -1 --pretty=%B 2>/dev/null | head -n 1 | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || echo "No commit message")
           AUTHOR=$(git log -1 --pretty=%an 2>/dev/null | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' || echo "${GITHUB_ACTOR}")
@@ -80,20 +86,40 @@ jobs:
           CAPTION="${CAPTION}• <b>Message:</b> ${COMMIT_MSG}\n"
           CAPTION="${CAPTION}• <b>Build Time:</b> ${BUILD_DATE}"
 
-          echo "Sending ${NEW_APK_NAME} (${FILE_SIZE}) to Telegram channel ${CHAT_ID}..."
-          CAPTION_TEXT=$(printf "$CAPTION")
-
-          RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
-            -F "chat_id=${CHAT_ID}" \
-            -F "document=@${NEW_APK_NAME}" \
-            -F "caption=${CAPTION_TEXT}" \
-            -F "parse_mode=HTML")
-
-          echo "Telegram API Response: ${RESPONSE}"
-
-          if echo "$RESPONSE" | grep -q '"ok":true'; then
-            echo "Successfully delivered APK to Telegram channel!"
+          if [ "$SIZE_BYTES" -le 49000000 ]; then
+            echo "Sending single APK (${FILE_SIZE}) to Telegram..."
+            CAPTION_TEXT=$(printf "$CAPTION")
+            RESPONSE=$(curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+              -F "chat_id=${CHAT_ID}" \
+              -F "document=@${NEW_APK_NAME}" \
+              -F "caption=${CAPTION_TEXT}" \
+              -F "parse_mode=HTML")
+            echo "Telegram API Response: ${RESPONSE}"
           else
-            echo "Failed to send APK to Telegram channel."
-            exit 1
+            echo "APK (${FILE_SIZE}) exceeds Telegram 50MB bot upload limit. Publishing GitHub Release and sending split parts..."
+            
+            RELEASE_TAG="v1.0.0-${SHORT_SHA}"
+            gh release create "${RELEASE_TAG}" "${NEW_APK_NAME}" --title "Hexaro Office v1.0.0 (${SHORT_SHA})" --notes "Hexaro Office standalone release build" || true
+            DOWNLOAD_URL="https://github.com/${REPO_NAME}/releases/download/${RELEASE_TAG}/${NEW_APK_NAME}"
+
+            CAPTION="${CAPTION}\n\n⚠️ <i>APK (${FILE_SIZE}) exceeds Telegram's 50MB bot upload limit.</i>\n📥 <b><a href=\"${DOWNLOAD_URL}\">Direct 1-Click APK Download</a></b>\n<i>(Split parts are also uploaded below for Termux/reassembly)</i>"
+            CAPTION_TEXT=$(printf "$CAPTION")
+
+            # Post formatted report to Telegram
+            curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${CHAT_ID}" \
+              -d "text=${CAPTION_TEXT}" \
+              -d "parse_mode=HTML"
+
+            # Split into chunks under 48MB each and send
+            split -b 48M "${NEW_APK_NAME}" "split_${NEW_APK_NAME}.part_"
+            for part in split_${NEW_APK_NAME}.part_*; do
+              PART_NAME=$(basename "$part")
+              echo "Sending $PART_NAME to Telegram..."
+              curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" \
+                -F "chat_id=${CHAT_ID}" \
+                -F "document=@${part}" \
+                -F "caption=📦 ${PART_NAME}"
+            done
+            echo "Successfully delivered report, 1-click download link, and split parts to Telegram!"
           fi
