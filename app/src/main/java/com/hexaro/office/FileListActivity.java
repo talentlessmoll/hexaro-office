@@ -272,6 +272,10 @@ public class FileListActivity extends AppCompatActivity {
         }
     }
 
+    private void handleIncomingUri(Uri uri) {
+        handleIncomingUri(uri, false);
+    }
+
     private void handleIncomingUri(Uri uri, boolean isFromExternal) {
         // Fast direct path if it's already a local file scheme
         if ("file".equalsIgnoreCase(uri.getScheme()) && uri.getPath() != null && new File(uri.getPath()).exists()) {
