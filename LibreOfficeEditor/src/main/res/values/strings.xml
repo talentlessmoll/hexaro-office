@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="office_file_exiting">正在关闭文件</string>
-    <string name="office_file_loading">正在打开文件</string>
+    <string name="office_file_exiting">Closing document...</string>
+    <string name="office_file_loading">Opening document...</string>
 </resources>
