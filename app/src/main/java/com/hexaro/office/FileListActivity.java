@@ -58,7 +58,9 @@ public class FileListActivity extends AppCompatActivity {
         setContentView(R.layout.activity_file_list);
 
         initViews();
-        handleIntent(getIntent());
+        if (savedInstanceState == null) {
+            handleIntent(getIntent());
+        }
     }
 
     @Override
@@ -258,23 +260,22 @@ public class FileListActivity extends AppCompatActivity {
         if (Intent.ACTION_VIEW.equals(action) || Intent.ACTION_EDIT.equals(action)) {
             Uri uri = intent.getData();
             if (uri != null) {
-                // Clear the intent action so subsequent resumes or task switches never re-open
                 setIntent(new Intent(this, FileListActivity.class).setAction(Intent.ACTION_MAIN));
-                handleIncomingUri(uri);
+                handleIncomingUri(uri, true);
             }
         } else if (Intent.ACTION_SEND.equals(action)) {
             Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
             if (uri != null) {
                 setIntent(new Intent(this, FileListActivity.class).setAction(Intent.ACTION_MAIN));
-                handleIncomingUri(uri);
+                handleIncomingUri(uri, true);
             }
         }
     }
 
-    private void handleIncomingUri(Uri uri) {
+    private void handleIncomingUri(Uri uri, boolean isFromExternal) {
         // Fast direct path if it's already a local file scheme
         if ("file".equalsIgnoreCase(uri.getScheme()) && uri.getPath() != null && new File(uri.getPath()).exists()) {
-            openEditor(uri.getPath(), new File(uri.getPath()).getName());
+            openEditor(uri.getPath(), new File(uri.getPath()).getName(), isFromExternal);
             return;
         }
 
@@ -292,7 +293,7 @@ public class FileListActivity extends AppCompatActivity {
                     loadingDialog.dismiss();
                 }
                 if (localPath != null) {
-                    openEditor(localPath, fileName);
+                    openEditor(localPath, fileName, isFromExternal);
                 } else {
                     Toast.makeText(this, R.string.file_not_found, Toast.LENGTH_SHORT).show();
                 }
@@ -301,9 +302,19 @@ public class FileListActivity extends AppCompatActivity {
     }
 
     private void openEditor(String filePath, String fileName) {
+        openEditor(filePath, fileName, false);
+    }
+
+    private void openEditor(String filePath, String fileName, boolean isFromExternal) {
         RecentFileManager.addRecent(this, filePath, fileName);
         Intent intent = new Intent(this, LOActivity.class);
         intent.putExtra("filePath", filePath);
         startActivity(intent);
+        if (isFromExternal) {
+            // When opened from an external app (like WhatsApp), finish FileListActivity
+            // so closing LOActivity returns the user directly back to the caller app
+            // and completely avoids any background recreation or open-and-close loop.
+            finish();
+        }
     }
 }
